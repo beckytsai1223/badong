@@ -3,6 +3,27 @@
 const db = require('../db/queries');
 const { buildMenuFlexMessage, buildPaymentNotificationMessage } = require('./messages');
 
+// Helper: get display name from LINE profile, works in both group and 1-on-1
+async function getDisplayName(client, event) {
+  const userId = event.source.userId;
+  const groupId = event.source.groupId;
+  const roomId = event.source.roomId;
+  try {
+    if (groupId) {
+      const profile = await client.getGroupMemberProfile(groupId, userId);
+      return profile.displayName;
+    }
+    if (roomId) {
+      const profile = await client.getRoomMemberProfile(roomId, userId);
+      return profile.displayName;
+    }
+    const profile = await client.getProfile(userId);
+    return profile.displayName;
+  } catch (_) {
+    return userId;
+  }
+}
+
 // Helper: reply with a text message
 async function replyText(client, replyToken, text) {
   return client.replyMessage({ replyToken, messages: [{ type: 'text', text }] });
@@ -102,14 +123,7 @@ async function selectItem(event, client, orderId, itemId) {
     return replyText(client, replyToken, '找不到此餐點，請重新選擇。');
   }
 
-  // Get display name from profile if available
-  let displayName = userName;
-  try {
-    const profile = await client.getProfile(userId);
-    displayName = profile.displayName;
-  } catch (_) {
-    // In group contexts, may need getGroupMemberProfile; fallback to userId
-  }
+  const displayName = await getDisplayName(client, event);
 
   db.upsertOrderItem(orderId, userId, displayName, itemId);
 
@@ -192,12 +206,7 @@ async function setPaymentMethod(event, client, orderId, method) {
   const methodLabels = { cash: '現金', transfer: '轉帳', linepay: 'LINE Pay' };
   const label = methodLabels[method] || method;
 
-  // Get display name
-  let displayName = userId;
-  try {
-    const profile = await client.getProfile(userId);
-    displayName = profile.displayName;
-  } catch (_) {}
+  const displayName = await getDisplayName(client, event);
 
   db.upsertPayment(orderId, userId, displayName, method);
 
@@ -260,6 +269,25 @@ async function viewPaymentStatus(event, client) {
   );
 }
 
+// ─── Cancel Order ─────────────────────────────────────────────────────────────
+
+async function cancelOrder(event, client) {
+  const replyToken = event.replyToken;
+  const userId = event.source.userId;
+
+  const order = db.getActiveOrder();
+  if (!order) {
+    return replyText(client, replyToken, '目前沒有進行中的訂單。');
+  }
+
+  db.updateOrderStatus(order.id, 'closed');
+  db.clearSession(userId);
+
+  return replyText(client, replyToken,
+    `❌ 訂單「${order.restaurant_name}」已取消。\n可以用 /新增訂單 重新建立。`
+  );
+}
+
 module.exports = {
   createOrderSession,
   handleWizardInput,
@@ -269,4 +297,5 @@ module.exports = {
   setPaymentMethod,
   markMemberPaid,
   viewPaymentStatus,
+  cancelOrder,
 };
