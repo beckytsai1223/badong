@@ -111,6 +111,23 @@ cp .env.example .env
 LINE_CHANNEL_SECRET=貼上你的_channel_secret
 LINE_CHANNEL_ACCESS_TOKEN=貼上你的_channel_access_token
 PORT=3000
+ORGANIZER_IDS=貼上主辦人的LINE_userId（多人用逗號分隔）
+```
+
+> **ORGANIZER_IDS 留空時，所有人都可以使用主辦人指令**（方便初次測試）。正式使用前請務必填入。
+
+### 3-3. 如何查詢自己的 LINE userId
+
+把 Bot 加入群組後，在群組輸入：
+
+```
+/我的ID
+```
+
+Bot 會回覆你的 userId（格式為 `U` 開頭的 33 字元字串），複製後貼到 `.env` 的 `ORGANIZER_IDS`。多位主辦人用逗號分隔：
+
+```
+ORGANIZER_IDS=U0080f5c93796fbb8bc,Uabc123def456
 ```
 
 > `.env` 檔案包含敏感資訊，已加入 `.gitignore`，不會被 git 追蹤。
