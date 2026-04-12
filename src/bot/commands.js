@@ -125,10 +125,15 @@ async function selectItem(event, client, orderId, itemId) {
 
   const displayName = await getDisplayName(client, event);
 
-  db.upsertOrderItem(orderId, userId, displayName, itemId);
+  db.addOrderItem(orderId, userId, displayName, itemId);
+
+  // Show running total for this user
+  const myItems = db.getOrderItems(orderId).filter(oi => oi.user_id === userId);
+  const myTotal = myItems.reduce((sum, oi) => sum + oi.price, 0);
+  const myList = myItems.map(oi => oi.item_name).join('、');
 
   return replyText(client, replyToken,
-    `✅ ${displayName} 已選：${item.name} $${item.price}`
+    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}\n（輸入 /取消餐點 可清除重選）`
   );
 }
 
@@ -149,9 +154,18 @@ async function viewTally(event, client) {
     );
   }
 
-  const lines = items.map(oi => `• ${oi.user_name}：${oi.item_name} $${oi.price}`);
-  const total = items.reduce((sum, oi) => sum + oi.price, 0);
-  lines.push(`\n合計：${items.length} 份，共 $${total}`);
+  // Group by user
+  const byUser = {};
+  for (const oi of items) {
+    if (!byUser[oi.user_id]) byUser[oi.user_id] = { name: oi.user_name, items: [], total: 0 };
+    byUser[oi.user_id].items.push(oi.item_name);
+    byUser[oi.user_id].total += oi.price;
+  }
+  const grandTotal = items.reduce((sum, oi) => sum + oi.price, 0);
+  const lines = Object.values(byUser).map(u =>
+    `• ${u.name}：${u.items.join('、')}（$${u.total}）`
+  );
+  lines.push(`\n合計：${items.length} 份，共 $${grandTotal}`);
 
   return replyText(client, replyToken,
     `📋 ${order.restaurant_name} 目前訂單：\n\n${lines.join('\n')}`
@@ -175,9 +189,9 @@ async function confirmOrder(event, client) {
 
   db.updateOrderStatus(order.id, 'confirmed');
 
-  // First reply to confirm
+  const uniqueUsers = new Set(items.map(i => i.user_id)).size;
   await replyText(client, replyToken,
-    `✅ 訂單已確認！共 ${items.length} 份，正在發送收款通知...`
+    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...`
   );
 
   // Send Payment Notifications to the group
@@ -267,6 +281,45 @@ async function viewPaymentStatus(event, client) {
   return replyText(client, replyToken,
     `💰 收款狀態（${order.restaurant_name}）：\n\n${lines.join('\n')}`
   );
+}
+
+// ─── Cancel My Items ──────────────────────────────────────────────────────────
+
+async function cancelMyItems(event, client) {
+  const replyToken = event.replyToken;
+  const userId = event.source.userId;
+
+  const order = db.getActiveOrder();
+  if (!order || order.status !== 'open') {
+    return replyText(client, replyToken, '目前沒有開放選餐的訂單。');
+  }
+
+  const removed = db.removeUserOrderItems(order.id, userId);
+  if (!removed) {
+    return replyText(client, replyToken, '你目前沒有選餐，無需取消。');
+  }
+  return replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。');
+}
+
+// ─── Cancel Named User Items（主辦人用）────────────────────────────────────────
+
+async function cancelNamedItems(event, client, name) {
+  const replyToken = event.replyToken;
+
+  const order = db.getActiveOrder();
+  if (!order || order.status !== 'open') {
+    return replyText(client, replyToken, '目前沒有開放選餐的訂單。');
+  }
+
+  const removed = db.removeNamedUserOrderItems(order.id, name);
+  if (!removed) {
+    const items = db.getOrderItems(order.id);
+    const names = [...new Set(items.map(i => i.user_name))].join('、');
+    return replyText(client, replyToken,
+      `找不到「${name}」的選餐。\n目前有選餐的人：${names || '（無）'}`
+    );
+  }
+  return replyText(client, replyToken, `✅ 已取消「${name}」的餐點選擇。`);
 }
 
 // ─── Cancel Order ─────────────────────────────────────────────────────────────

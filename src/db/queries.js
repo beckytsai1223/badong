@@ -41,26 +41,39 @@ function getMenuItems(orderId) {
 
 // ─── OrderItem ────────────────────────────────────────────────────────────────
 
-function upsertOrderItem(orderId, userId, userName, menuItemId) {
+function addOrderItem(orderId, userId, userName, menuItemId) {
   const db = getDb();
   db.prepare(`
     INSERT INTO order_items (order_id, user_id, user_name, menu_item_id)
     VALUES (?, ?, ?, ?)
-    ON CONFLICT(order_id, user_id) DO UPDATE SET
-      user_name = excluded.user_name,
-      menu_item_id = excluded.menu_item_id
   `).run(orderId, userId, userName, menuItemId);
 }
 
 function getOrderItems(orderId) {
   const db = getDb();
   return db.prepare(`
-    SELECT oi.user_id, oi.user_name, mi.name AS item_name, mi.price, mi.id AS menu_item_id
+    SELECT oi.id, oi.user_id, oi.user_name, mi.name AS item_name, mi.price, mi.id AS menu_item_id
     FROM order_items oi
     JOIN menu_items mi ON oi.menu_item_id = mi.id
     WHERE oi.order_id = ?
-    ORDER BY oi.id
+    ORDER BY oi.user_id, oi.id
   `).all(orderId);
+}
+
+function removeUserOrderItems(orderId, userId) {
+  const db = getDb();
+  const result = db.prepare(
+    `DELETE FROM order_items WHERE order_id = ? AND user_id = ?`
+  ).run(orderId, userId);
+  return result.changes > 0;
+}
+
+function removeNamedUserOrderItems(orderId, userName) {
+  const db = getDb();
+  const result = db.prepare(
+    `DELETE FROM order_items WHERE order_id = ? AND lower(user_name) = lower(?)`
+  ).run(orderId, userName);
+  return result.changes > 0;
 }
 
 // ─── Payment ──────────────────────────────────────────────────────────────────
@@ -118,7 +131,7 @@ function clearSession(userId) {
 module.exports = {
   createOrder, getActiveOrder, updateOrderStatus,
   addMenuItem, getMenuItems,
-  upsertOrderItem, getOrderItems,
+  addOrderItem, getOrderItems, removeUserOrderItems, removeNamedUserOrderItems,
   upsertPayment, getPayments, markPaid,
   setSession, getSession, clearSession,
 };

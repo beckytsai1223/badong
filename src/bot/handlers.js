@@ -85,6 +85,21 @@ async function handleTextMessage(event, client) {
     return commands.cancelOrder(event, client);
   }
 
+  // /取消餐點 — cancel own items (anyone); /取消餐點 <name> — organizer only
+  if (text === '/取消餐點') {
+    return commands.cancelMyItems(event, client);
+  }
+  if (text.startsWith('/取消餐點')) {
+    const name = text.replace('/取消餐點', '').trim();
+    if (!isOrganizer(userId)) {
+      return client.replyMessage({
+        replyToken,
+        messages: [{ type: 'text', text: '只有主辦人可以取消他人的餐點。' }],
+      });
+    }
+    return commands.cancelNamedItems(event, client, name);
+  }
+
   // Unrecognized message outside wizard — silently ignore
 }
 

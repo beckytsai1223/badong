@@ -76,7 +76,16 @@ function buildMenuFlexMessage(order, menuItems) {
  * action=set_payment&order_id=<id>&method=<method>
  */
 function buildPaymentNotificationMessage(order, orderItems) {
-  const lines = orderItems.map(oi => `• ${oi.user_name}：${oi.item_name} $${oi.price}`);
+  // Group by user so each person sees their subtotal
+  const byUser = {};
+  for (const oi of orderItems) {
+    if (!byUser[oi.user_id]) byUser[oi.user_id] = { name: oi.user_name, items: [], total: 0 };
+    byUser[oi.user_id].items.push(oi.item_name);
+    byUser[oi.user_id].total += oi.price;
+  }
+  const lines = Object.values(byUser).map(u =>
+    `• ${u.name}：${u.items.join('、')} → $${u.total}`
+  );
   const total = orderItems.reduce((sum, oi) => sum + oi.price, 0);
 
   const methods = ['cash', 'transfer', 'linepay'];

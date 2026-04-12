@@ -39,7 +39,6 @@ function initSchema() {
       user_id TEXT NOT NULL,
       user_name TEXT NOT NULL,
       menu_item_id INTEGER NOT NULL,
-      UNIQUE (order_id, user_id),
       FOREIGN KEY (order_id) REFERENCES orders(id),
       FOREIGN KEY (menu_item_id) REFERENCES menu_items(id)
     );
