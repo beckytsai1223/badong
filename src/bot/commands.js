@@ -39,6 +39,34 @@ async function pushMessage(client, to, message) {
   return client.pushMessage({ to, messages: [message] });
 }
 
+// ─── Context Hints ────────────────────────────────────────────────────────────
+
+const HINT = {
+  wizard:
+    '\n\n📌 接下來：\n' +
+    '　繼續輸入 <品名> <價格> 新增品項\n' +
+    '　/完成 → 結束菜單、發布點餐',
+
+  open:
+    '\n\n📌 可用指令：\n' +
+    '　點選菜單按鈕 → 點餐（可多選）\n' +
+    '　/統計 → 查看目前選餐\n' +
+    '　/取消餐點 → 取消自己的選餐重選\n' +
+    '　/確認下單 → 結單並通知付款（主辦人）\n' +
+    '　/取消餐點 <名字> → 取消他人選餐（主辦人）\n' +
+    '　/取消訂單 → 取消整筆訂單（主辦人）',
+
+  confirmed:
+    '\n\n📌 可用指令：\n' +
+    '　/收款狀態 → 查看付款進度\n' +
+    '　/已收款 <名字> → 標記已收款（主辦人）\n' +
+    '　/取消訂單 → 關閉訂單（主辦人）',
+
+  none:
+    '\n\n📌 可用指令：\n' +
+    '　/新增訂單 <店名> → 開始新一輪訂餐（主辦人）',
+};
+
 // ─── Create Order Session ─────────────────────────────────────────────────────
 
 async function createOrderSession(event, client, restaurant) {
@@ -60,7 +88,7 @@ async function createOrderSession(event, client, restaurant) {
   db.setSession(userId, 'adding_items', { orderId, restaurantName: restaurant });
 
   return replyText(client, replyToken,
-    `✅ 已建立「${restaurant}」訂單！\n\n請逐一輸入菜單項目，格式：\n  <品名> <價格>\n例如：排骨飯 80\n\n輸入完畢後請傳送「/完成」或空白訊息結束。`
+    `✅ 已建立「${restaurant}」訂單！\n\n請逐一輸入菜單項目，格式：\n  <品名> <價格>\n例如：排骨飯 80\n\n輸入完畢後請傳送「/完成」或空白訊息結束。` + HINT.wizard
   );
 }
 
@@ -78,7 +106,7 @@ async function handleWizardInput(event, client, text, session) {
     const menuItems = db.getMenuItems(orderId);
 
     if (menuItems.length === 0) {
-      return replyText(client, replyToken, '菜單沒有任何項目，訂單已取消。請重新建立訂單。');
+      return replyText(client, replyToken, '菜單沒有任何項目，訂單已取消。請重新建立訂單。' + HINT.none);
     }
 
     const flexMsg = buildMenuFlexMessage(order, menuItems);
@@ -98,7 +126,7 @@ async function handleWizardInput(event, client, text, session) {
   db.addMenuItem(orderId, name, price);
 
   return replyText(client, replyToken,
-    `✓ 已加入：${name} $${price}\n繼續輸入下一道，或傳送「/完成」結束。`
+    `✓ 已加入：${name} $${price}\n繼續輸入下一道，或傳送「/完成」結束。` + HINT.wizard
   );
 }
 
@@ -133,7 +161,7 @@ async function selectItem(event, client, orderId, itemId) {
   const myList = myItems.map(oi => oi.item_name).join('、');
 
   return replyText(client, replyToken,
-    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}\n（輸入 /取消餐點 可清除重選）`
+    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}` + HINT.open
   );
 }
 
@@ -150,7 +178,7 @@ async function viewTally(event, client) {
   const items = db.getOrderItems(order.id);
   if (items.length === 0) {
     return replyText(client, replyToken,
-      `📋 ${order.restaurant_name} — 目前沒有人選餐。`
+      `📋 ${order.restaurant_name} — 目前沒有人選餐。` + HINT.open
     );
   }
 
@@ -167,8 +195,9 @@ async function viewTally(event, client) {
   );
   lines.push(`\n合計：${items.length} 份，共 $${grandTotal}`);
 
+  const hint = order.status === 'open' ? HINT.open : HINT.confirmed;
   return replyText(client, replyToken,
-    `📋 ${order.restaurant_name} 目前訂單：\n\n${lines.join('\n')}`
+    `📋 ${order.restaurant_name} 目前訂單：\n\n${lines.join('\n')}` + hint
   );
 }
 
@@ -191,7 +220,7 @@ async function confirmOrder(event, client) {
 
   const uniqueUsers = new Set(items.map(i => i.user_id)).size;
   await replyText(client, replyToken,
-    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...`
+    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...` + HINT.confirmed
   );
 
   // Send Payment Notifications to the group
@@ -224,7 +253,7 @@ async function setPaymentMethod(event, client, orderId, method) {
 
   db.upsertPayment(orderId, userId, displayName, method);
 
-  return replyText(client, replyToken, `✅ 已記錄付款方式：${label}`);
+  return replyText(client, replyToken, `✅ 已記錄付款方式：${label}` + HINT.confirmed);
 }
 
 // ─── Mark Member as Paid ──────────────────────────────────────────────────────
@@ -250,7 +279,7 @@ async function markMemberPaid(event, client, name) {
     );
   }
 
-  return replyText(client, replyToken, `✅ 已標記「${name}」收款完成。`);
+  return replyText(client, replyToken, `✅ 已標記「${name}」收款完成。` + HINT.confirmed);
 }
 
 // ─── View Payment Status ──────────────────────────────────────────────────────
@@ -279,7 +308,7 @@ async function viewPaymentStatus(event, client) {
   lines.push(`\n已收：${paidCount}／${payments.length} 人`);
 
   return replyText(client, replyToken,
-    `💰 收款狀態（${order.restaurant_name}）：\n\n${lines.join('\n')}`
+    `💰 收款狀態（${order.restaurant_name}）：\n\n${lines.join('\n')}` + HINT.confirmed
   );
 }
 
@@ -298,7 +327,7 @@ async function cancelMyItems(event, client) {
   if (!removed) {
     return replyText(client, replyToken, '你目前沒有選餐，無需取消。');
   }
-  return replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。');
+  return replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。' + HINT.open);
 }
 
 // ─── Cancel Named User Items（主辦人用）────────────────────────────────────────
@@ -319,7 +348,7 @@ async function cancelNamedItems(event, client, name) {
       `找不到「${name}」的選餐。\n目前有選餐的人：${names || '（無）'}`
     );
   }
-  return replyText(client, replyToken, `✅ 已取消「${name}」的餐點選擇。`);
+  return replyText(client, replyToken, `✅ 已取消「${name}」的餐點選擇。` + HINT.open);
 }
 
 // ─── Cancel Order ─────────────────────────────────────────────────────────────
@@ -337,7 +366,7 @@ async function cancelOrder(event, client) {
   db.clearSession(userId);
 
   return replyText(client, replyToken,
-    `❌ 訂單「${order.restaurant_name}」已取消。\n可以用 /新增訂單 重新建立。`
+    `❌ 訂單「${order.restaurant_name}」已取消。` + HINT.none
   );
 }
 
