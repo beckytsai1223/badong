@@ -400,5 +400,7 @@ module.exports = {
   setPaymentMethod,
   markMemberPaid,
   viewPaymentStatus,
+  cancelMyItems,
+  cancelNamedItems,
   cancelOrder,
 };
