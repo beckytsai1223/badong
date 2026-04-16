@@ -72,7 +72,7 @@ function buildMenuFlexMessage(order, menuItems) {
 }
 
 /**
- * Build payment notification message with Quick Reply buttons for payment method.
+ * Build payment notification as a Flex Message with inline payment method buttons.
  * action=set_payment&order_id=<id>&method=<method>
  */
 function buildPaymentNotificationMessage(order, orderItems) {
@@ -83,29 +83,96 @@ function buildPaymentNotificationMessage(order, orderItems) {
     byUser[oi.user_id].items.push(oi.item_name);
     byUser[oi.user_id].total += oi.price;
   }
-  const lines = Object.values(byUser).map(u =>
-    `• ${u.name}：${u.items.join('、')} → $${u.total}`
-  );
   const total = orderItems.reduce((sum, oi) => sum + oi.price, 0);
 
-  const methods = ['cash', 'transfer', 'linepay'];
-  const labels = { cash: '現金', transfer: '轉帳', linepay: 'LINE Pay' };
+  const userRows = Object.values(byUser).map(u => ({
+    type: 'box',
+    layout: 'vertical',
+    margin: 'sm',
+    contents: [
+      {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          { type: 'text', text: u.name, flex: 1, size: 'sm', weight: 'bold' },
+          { type: 'text', text: `$${u.total}`, flex: 1, size: 'sm', align: 'end', color: '#333333' },
+        ],
+      },
+      {
+        type: 'text',
+        text: u.items.join('、'),
+        size: 'sm',
+        color: '#888888',
+        wrap: true,
+      },
+    ],
+  }));
 
-  const quickReplies = methods.map(method => ({
-    type: 'action',
+  const methods = [
+    { method: 'cash', label: '現金' },
+    { method: 'transfer', label: '轉帳' },
+    { method: 'linepay', label: 'LINE Pay' },
+  ];
+
+  const paymentButtons = methods.map(({ method, label }) => ({
+    type: 'button',
+    style: 'primary',
+    height: 'sm',
     action: {
       type: 'postback',
-      label: labels[method],
+      label,
       data: `action=set_payment&order_id=${order.id}&method=${method}`,
-      displayText: `付款方式：${labels[method]}`,
+      displayText: `付款方式：${label}`,
     },
   }));
 
   return {
-    type: 'text',
-    text: `✅ 訂單已確認！\n\n${lines.join('\n')}\n\n合計：$${total}\n\n請選擇付款方式 👇`,
-    quickReply: {
-      items: quickReplies,
+    type: 'flex',
+    altText: `💳 ${order.restaurant_name} 付款確認`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '💳 付款確認', weight: 'bold', size: 'lg', color: '#ffffff' },
+          { type: 'text', text: order.restaurant_name, size: 'sm', color: '#ffffffcc' },
+        ],
+        backgroundColor: '#2B7BB9',
+        paddingAll: '16px',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          ...userRows,
+          { type: 'separator', margin: 'md' },
+          {
+            type: 'box',
+            layout: 'horizontal',
+            margin: 'md',
+            contents: [
+              { type: 'text', text: '合計', flex: 3, weight: 'bold', size: 'sm' },
+              { type: 'text', text: `$${total}`, flex: 5, weight: 'bold', size: 'sm', align: 'end', color: '#2B7BB9' },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'text',
+            text: '請同仁付完款後，直接點選以下的付款方式',
+            size: 'sm',
+            color: '#555555',
+            wrap: true,
+          },
+          ...paymentButtons,
+        ],
+      },
     },
   };
 }

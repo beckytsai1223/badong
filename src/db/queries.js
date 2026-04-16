@@ -24,6 +24,11 @@ function updateOrderStatus(orderId, status) {
   db.prepare(`UPDATE orders SET status = ? WHERE id = ?`).run(status, orderId);
 }
 
+function setDeliveryThreshold(orderId, value) {
+  const db = getDb();
+  db.prepare(`UPDATE orders SET delivery_threshold = ? WHERE id = ?`).run(value, orderId);
+}
+
 // ─── MenuItem ─────────────────────────────────────────────────────────────────
 
 function addMenuItem(orderId, name, price) {
@@ -93,6 +98,11 @@ function getPayments(orderId) {
   return db.prepare(`SELECT * FROM payments WHERE order_id = ? ORDER BY id`).all(orderId);
 }
 
+function markPaidByUserId(orderId, userId) {
+  const db = getDb();
+  db.prepare(`UPDATE payments SET paid = 1 WHERE order_id = ? AND user_id = ?`).run(orderId, userId);
+}
+
 function markPaid(orderId, userName) {
   const db = getDb();
   const result = db.prepare(`
@@ -129,9 +139,9 @@ function clearSession(userId) {
 }
 
 module.exports = {
-  createOrder, getActiveOrder, updateOrderStatus,
+  createOrder, getActiveOrder, updateOrderStatus, setDeliveryThreshold,
   addMenuItem, getMenuItems,
   addOrderItem, getOrderItems, removeUserOrderItems, removeNamedUserOrderItems,
-  upsertPayment, getPayments, markPaid,
+  upsertPayment, getPayments, markPaid, markPaidByUserId,
   setSession, getSession, clearSession,
 };

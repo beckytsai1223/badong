@@ -61,6 +61,13 @@ function initSchema() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
+
+  // Migration: add delivery_threshold column if not yet present
+  try {
+    db.exec(`ALTER TABLE orders ADD COLUMN delivery_threshold INTEGER DEFAULT NULL`);
+  } catch (_) {
+    // Column already exists — idempotent
+  }
 }
 
 module.exports = { getDb };

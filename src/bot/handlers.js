@@ -36,15 +36,23 @@ async function handleTextMessage(event, client) {
     });
   }
 
+  // /help — available to everyone, role-aware command list
+  if (text === '/help') {
+    return client.replyMessage({
+      replyToken,
+      messages: [{ type: 'text', text: commands.helpMessage(userId) }],
+    });
+  }
+
   // Check for active wizard session first (organizer only)
   const session = getSession(userId);
-  if (session && session.state === 'adding_items') {
+  if (session && (session.state === 'adding_items' || session.state === 'setting_threshold' || session.state === 'confirming_menu')) {
     return commands.handleWizardInput(event, client, text, session);
   }
 
   // Organizer-only commands
   if (text.startsWith('/新增訂單') || text === '/統計' || text === '/確認下單' ||
-      text.startsWith('/已收款') || text === '/收款狀態' || text === '/取消訂單') {
+      text === '/收款狀態' || text === '/關閉訂單') {
     if (!isOrganizer(userId)) {
       return client.replyMessage({
         replyToken,
@@ -64,14 +72,10 @@ async function handleTextMessage(event, client) {
   if (text === '/確認下單') {
     return commands.confirmOrder(event, client);
   }
-  if (text.startsWith('/已收款')) {
-    const name = text.replace('/已收款', '').trim();
-    return commands.markMemberPaid(event, client, name);
-  }
   if (text === '/收款狀態') {
     return commands.viewPaymentStatus(event, client);
   }
-  if (text === '/取消訂單') {
+  if (text === '/關閉訂單') {
     return commands.cancelOrder(event, client);
   }
 

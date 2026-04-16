@@ -57,7 +57,7 @@ function hint(type, userId) {
         '　/取消餐點 → 取消自己的選餐重選\n' +
         '　/取消餐點 <名字> → 取消他人選餐\n' +
         '　/確認下單 → 結單並通知付款\n' +
-        '　/取消訂單 → 取消整筆訂單'
+        '　/關閉訂單 → 關閉整筆訂單'
       : '\n\n📌 可用指令：\n' +
         '　點選菜單按鈕 → 點餐（可多選）\n' +
         '　/取消餐點 → 取消自己的選餐重選';
@@ -66,8 +66,7 @@ function hint(type, userId) {
     return org
       ? '\n\n📌 可用指令：\n' +
         '　/收款狀態 → 查看付款進度\n' +
-        '　/已收款 <名字> → 標記已收款\n' +
-        '　/取消訂單 → 關閉訂單'
+        '　/關閉訂單 → 關閉訂單'
       : '\n\n📌 可用指令：\n' +
         '　付款通知按鈕 → 選擇付款方式';
   }
@@ -96,10 +95,10 @@ async function createOrderSession(event, client, restaurant) {
   }
 
   const orderId = db.createOrder(restaurant, userId);
-  db.setSession(userId, 'adding_items', { orderId, restaurantName: restaurant });
+  db.setSession(userId, 'setting_threshold', { orderId, restaurantName: restaurant });
 
   return replyText(client, replyToken,
-    `✅ 已建立「${restaurant}」訂單！\n\n請逐一輸入菜單項目，格式：\n  <品名> <價格>\n例如：排骨飯 80\n\n輸入完畢後請傳送「/完成」或空白訊息結束。`
+    `✅ 已建立「${restaurant}」訂單！\n\n請輸入外送標準金額（例如：500）\n若無外送標準，請輸入 /略過`
   );
 }
 
@@ -110,34 +109,95 @@ async function handleWizardInput(event, client, text, session) {
   const userId = event.source.userId;
   const { orderId, restaurantName } = session.data;
 
-  // End wizard
-  if (text === '' || text === '/完成') {
-    db.clearSession(userId);
-    const order = db.getActiveOrder();
-    const menuItems = db.getMenuItems(orderId);
-
-    if (menuItems.length === 0) {
-      return replyText(client, replyToken, '菜單沒有任何項目，訂單已取消。請重新建立訂單。' + hint('none', userId));
+  // setting_threshold state: collect optional delivery threshold before menu entry
+  if (session.state === 'setting_threshold') {
+    if (text === '/略過' || text === '') {
+      db.setSession(userId, 'adding_items', { orderId, restaurantName });
+      return replyText(client, replyToken,
+        `已略過外送標準。\n\n請一次輸入所有菜單品項，每行一個，格式：品名 金額\n範例：\n排骨飯 80\n雞腿飯 90`
+      );
     }
-
-    const flexMsg = buildMenuFlexMessage(order, menuItems);
-    return replyMessage(client, replyToken, flexMsg);
+    if (/^\d+$/.test(text)) {
+      const value = parseInt(text, 10);
+      db.setDeliveryThreshold(orderId, value);
+      db.setSession(userId, 'adding_items', { orderId, restaurantName });
+      return replyText(client, replyToken,
+        `外送標準設為 $${value}。\n\n請一次輸入所有菜單品項，每行一個，格式：品名 金額\n範例：\n排骨飯 80\n雞腿飯 90`
+      );
+    }
+    return replyText(client, replyToken, '請輸入純數字（例如：500），或輸入 /略過 跳過。');
   }
 
-  // Parse "<name> <price>"
-  const match = text.match(/^(.+?)\s+(\d+)$/);
-  if (!match) {
+  // confirming_menu state: wait for /確認 or re-entry
+  if (session.state === 'confirming_menu') {
+    const { pendingItems } = session.data;
+
+    if (text === '/確認') {
+      for (const item of pendingItems) {
+        db.addMenuItem(orderId, item.name, item.price);
+      }
+      db.clearSession(userId);
+      const order = db.getActiveOrder();
+      const menuItems = db.getMenuItems(orderId);
+      const flexMsg = buildMenuFlexMessage(order, menuItems);
+      return replyMessage(client, replyToken, flexMsg);
+    }
+
+    // Re-entry: parse as new batch
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const parsed = [];
+    const badLines = [];
+    lines.forEach((line, i) => {
+      const m = line.match(/^(.+?)\s+(\d+)$/);
+      if (m) {
+        parsed.push({ name: m[1].trim(), price: parseInt(m[2], 10) });
+      } else {
+        badLines.push(`第 ${i + 1} 行：${line}`);
+      }
+    });
+
+    if (badLines.length > 0) {
+      return replyText(client, replyToken,
+        `以下行格式有誤，請重新輸入整份菜單：\n${badLines.join('\n')}\n\n格式：品名 金額，例如：排骨飯 80`
+      );
+    }
+
+    db.setSession(userId, 'confirming_menu', { orderId, restaurantName, pendingItems: parsed });
+    const preview = parsed.map(it => `${it.name} $${it.price}`).join('\n');
     return replyText(client, replyToken,
-      '格式錯誤，請輸入：<品名> <價格>，例如：排骨飯 80\n或輸入「/完成」結束。'
+      `已解析以下品項：\n${preview}\n\n請確認以上菜單，輸入 /確認 建立，或重新輸入整份菜單。`
     );
   }
 
-  const [, name, priceStr] = match;
-  const price = parseInt(priceStr, 10);
-  db.addMenuItem(orderId, name, price);
+  // adding_items state: parse multi-line batch
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const parsed = [];
+  const badLines = [];
+  lines.forEach((line, i) => {
+    const m = line.match(/^(.+?)\s+(\d+)$/);
+    if (m) {
+      parsed.push({ name: m[1].trim(), price: parseInt(m[2], 10) });
+    } else {
+      badLines.push(`第 ${i + 1} 行：${line}`);
+    }
+  });
 
+  if (badLines.length > 0) {
+    return replyText(client, replyToken,
+      `以下行格式有誤，請重新輸入整份菜單：\n${badLines.join('\n')}\n\n格式：品名 金額，例如：排骨飯 80`
+    );
+  }
+
+  if (parsed.length === 0) {
+    return replyText(client, replyToken,
+      '請輸入至少一道品項，格式：品名 金額，例如：排骨飯 80'
+    );
+  }
+
+  db.setSession(userId, 'confirming_menu', { orderId, restaurantName, pendingItems: parsed });
+  const preview = parsed.map(it => `${it.name} $${it.price}`).join('\n');
   return replyText(client, replyToken,
-    `✓ 已加入：${name} $${price}\n繼續輸入下一道，或傳送「/完成」結束。` + hint('wizard', userId)
+    `已解析以下品項：\n${preview}\n\n請確認以上菜單，輸入 /確認 建立，或重新輸入整份菜單。`
   );
 }
 
@@ -172,7 +232,7 @@ async function selectItem(event, client, orderId, itemId) {
   const myList = myItems.map(oi => oi.item_name).join('、');
 
   await replyText(client, replyToken,
-    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}` + hint('open', userId)
+    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}\n\n/取消餐點 → 取消自己的選餐重選`
   );
 
   // Re-push menu so it stays accessible at the bottom of the chat
@@ -210,9 +270,17 @@ async function viewTally(event, client) {
   );
   lines.push(`\n合計：${items.length} 份，共 $${grandTotal}`);
 
-  const tallyHint = hint(order.status === 'open' ? 'open' : 'confirmed', event.source.userId);
+  if (order.delivery_threshold != null) {
+    if (grandTotal >= order.delivery_threshold) {
+      lines.push(`✅ 已達外送標準（$${order.delivery_threshold}）`);
+    } else {
+      const shortfall = order.delivery_threshold - grandTotal;
+      lines.push(`⚠️ 距外送標準還差 $${shortfall}（標準：$${order.delivery_threshold}）`);
+    }
+  }
+
   return replyText(client, replyToken,
-    `📋 ${order.restaurant_name} 目前訂單：\n\n${lines.join('\n')}` + tallyHint
+    `📋 ${order.restaurant_name} 目前訂單：\n\n${lines.join('\n')}`
   );
 }
 
@@ -220,6 +288,7 @@ async function viewTally(event, client) {
 
 async function confirmOrder(event, client) {
   const replyToken = event.replyToken;
+  const userId = event.source.userId;
   const order = db.getActiveOrder();
 
   if (!order || order.status !== 'open') {
@@ -233,9 +302,14 @@ async function confirmOrder(event, client) {
 
   db.updateOrderStatus(order.id, 'confirmed');
 
+  // Auto-mark organizer as paid — they don't need to self-report
+  const displayName = await getDisplayName(client, event);
+  db.upsertPayment(order.id, userId, displayName, 'organizer');
+  db.markPaidByUserId(order.id, userId);
+
   const uniqueUsers = new Set(items.map(i => i.user_id)).size;
   await replyText(client, replyToken,
-    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...`
+    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...\n\n請大家撥空付款，可現金、轉帳或 LINE Pay`
   );
 
   // Send Payment Notifications to the group
@@ -258,7 +332,7 @@ async function setPaymentMethod(event, client, orderId, method) {
   const payments = db.getPayments(orderId);
   const existing = payments.find(p => p.user_id === userId);
   if (existing && existing.paid) {
-    return replyText(client, replyToken, '您的款項已由主辦人標記為已收，無法更改。');
+    return replyText(client, replyToken, '您已選擇付款方式，選擇後無法更改。');
   }
 
   const methodLabels = { cash: '現金', transfer: '轉帳', linepay: 'LINE Pay' };
@@ -267,34 +341,9 @@ async function setPaymentMethod(event, client, orderId, method) {
   const displayName = await getDisplayName(client, event);
 
   db.upsertPayment(orderId, userId, displayName, method);
+  db.markPaidByUserId(orderId, userId);
 
-  return replyText(client, replyToken, `✅ 已記錄付款方式：${label}` + hint('confirmed', userId));
-}
-
-// ─── Mark Member as Paid ──────────────────────────────────────────────────────
-
-async function markMemberPaid(event, client, name) {
-  const replyToken = event.replyToken;
-
-  if (!name) {
-    return replyText(client, replyToken, '請輸入姓名，例如：/已收款 王小明');
-  }
-
-  const order = db.getActiveOrder();
-  if (!order || order.status !== 'confirmed') {
-    return replyText(client, replyToken, '目前沒有已確認的訂單。');
-  }
-
-  const success = db.markPaid(order.id, name);
-  if (!success) {
-    const payments = db.getPayments(order.id);
-    const names = payments.map(p => p.user_name).join('、');
-    return replyText(client, replyToken,
-      `找不到「${name}」。\n目前收款名單：${names || '（無）'}`
-    );
-  }
-
-  return replyText(client, replyToken, `✅ 已標記「${name}」收款完成。` + hint('confirmed', event.source.userId));
+  return replyText(client, replyToken, `✅ 已記錄付款方式：${label}`);
 }
 
 // ─── View Payment Status ──────────────────────────────────────────────────────
@@ -307,23 +356,45 @@ async function viewPaymentStatus(event, client) {
     return replyText(client, replyToken, '訂單尚未確認，還沒有收款資訊。');
   }
 
+  // Build unique orderers from order_items (dedup by user_id)
+  const orderItems = db.getOrderItems(order.id);
+  const orderersMap = {};
+  for (const oi of orderItems) {
+    if (!orderersMap[oi.user_id]) orderersMap[oi.user_id] = oi.user_name;
+  }
+
+  // Build payment lookup
   const payments = db.getPayments(order.id);
-  if (payments.length === 0) {
-    return replyText(client, replyToken, '目前沒有收款記錄。');
+  const paymentByUserId = {};
+  for (const p of payments) {
+    paymentByUserId[p.user_id] = p;
   }
 
   const methodLabels = { cash: '現金', transfer: '轉帳', linepay: 'LINE Pay' };
-  const lines = payments.map(p => {
-    const method = methodLabels[p.method] || '未選擇';
-    const status = p.paid ? '✅ 已付' : '❌ 未付';
-    return `• ${p.user_name}｜${method}｜${status}`;
-  });
 
-  const paidCount = payments.filter(p => p.paid).length;
-  lines.push(`\n已收：${paidCount}／${payments.length} 人`);
+  // Left-join: all orderers except organizer (method='organizer')
+  const lines = [];
+  let paidCount = 0;
+  for (const [userId, userName] of Object.entries(orderersMap)) {
+    const p = paymentByUserId[userId];
+    if (p && p.method === 'organizer') continue; // exclude organizer
+    if (p && p.paid) {
+      const label = methodLabels[p.method] || p.method;
+      lines.push(`• ${userName}｜${label}｜✅ 已付`);
+      paidCount++;
+    } else {
+      lines.push(`• ${userName}｜未選擇｜未付`);
+    }
+  }
+
+  if (lines.length === 0) {
+    return replyText(client, replyToken, '目前沒有非主辦人的訂餐記錄。');
+  }
+
+  lines.push(`\n已付款 ${paidCount}／${lines.length} 人`);
 
   return replyText(client, replyToken,
-    `💰 收款狀態（${order.restaurant_name}）：\n\n${lines.join('\n')}` + hint('confirmed', event.source.userId)
+    `💰 收款狀態（${order.restaurant_name}）：\n\n${lines.join('\n')}`
   );
 }
 
@@ -342,7 +413,7 @@ async function cancelMyItems(event, client) {
   if (!removed) {
     return replyText(client, replyToken, '你目前沒有選餐，無需取消。');
   }
-  await replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。' + hint('open', userId));
+  await replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。');
 
   // Re-push menu so the member can immediately re-select
   const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
@@ -369,7 +440,39 @@ async function cancelNamedItems(event, client, name) {
       `找不到「${name}」的選餐。\n目前有選餐的人：${names || '（無）'}`
     );
   }
-  return replyText(client, replyToken, `✅ 已取消「${name}」的餐點選擇。` + hint('open', userId));
+  return replyText(client, replyToken, `✅ 已取消「${name}」的餐點選擇。`);
+}
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function helpMessage(userId) {
+  if (isOrganizer(userId)) {
+    return '📋 可用指令\n\n' +
+      '【訂餐管理】\n' +
+      '/新增訂單 <店名> → 開始新一輪訂餐（主辦人）\n' +
+      '/統計 → 查看目前選餐（主辦人）\n' +
+      '/確認下單 → 結單並發送付款通知（主辦人）\n' +
+      '/關閉訂單 → 取消整筆訂單（主辦人）\n\n' +
+      '【點餐】\n' +
+      '點選菜單按鈕 → 點餐（可多選）\n' +
+      '/取消餐點 → 取消自己的選餐重選\n' +
+      '/取消餐點 <名字> → 取消他人選餐（主辦人）\n\n' +
+      '【付款】\n' +
+      '點選付款通知按鈕 → 回報付款方式（現金／轉帳／LINE Pay）\n' +
+      '/收款狀態 → 查看付款進度（主辦人）\n\n' +
+      '【其他】\n' +
+      '/我的ID → 查看自己的 LINE ID\n' +
+      '/help → 顯示本說明';
+  }
+  return '📋 可用指令\n\n' +
+    '【點餐】\n' +
+    '點選菜單按鈕 → 點餐（可多選）\n' +
+    '/取消餐點 → 取消自己的選餐重選\n\n' +
+    '【付款】\n' +
+    '點選付款通知按鈕 → 回報付款方式（現金／轉帳／LINE Pay）\n\n' +
+    '【其他】\n' +
+    '/我的ID → 查看自己的 LINE ID\n' +
+    '/help → 顯示本說明';
 }
 
 // ─── Cancel Order ─────────────────────────────────────────────────────────────
@@ -398,9 +501,9 @@ module.exports = {
   viewTally,
   confirmOrder,
   setPaymentMethod,
-  markMemberPaid,
   viewPaymentStatus,
   cancelMyItems,
   cancelNamedItems,
   cancelOrder,
+  helpMessage,
 };
