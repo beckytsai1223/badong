@@ -44,6 +44,17 @@ async function handleTextMessage(event, client) {
     });
   }
 
+  // /關閉訂單 — evaluated before wizard check so it works at any stage
+  if (text === '/關閉訂單') {
+    if (!isOrganizer(userId)) {
+      return client.replyMessage({
+        replyToken,
+        messages: [{ type: 'text', text: '只有主辦人可以關閉訂單。' }],
+      });
+    }
+    return commands.cancelOrder(event, client);
+  }
+
   // Check for active wizard session first (organizer only)
   const session = getSession(userId);
   if (session && (session.state === 'adding_items' || session.state === 'setting_threshold' || session.state === 'confirming_menu')) {
@@ -52,7 +63,7 @@ async function handleTextMessage(event, client) {
 
   // Organizer-only commands
   if (text.startsWith('/新增訂單') || text === '/統計' || text === '/確認下單' ||
-      text === '/收款狀態' || text === '/關閉訂單') {
+      text === '/收款狀態') {
     if (!isOrganizer(userId)) {
       return client.replyMessage({
         replyToken,
@@ -74,9 +85,6 @@ async function handleTextMessage(event, client) {
   }
   if (text === '/收款狀態') {
     return commands.viewPaymentStatus(event, client);
-  }
-  if (text === '/關閉訂單') {
-    return commands.cancelOrder(event, client);
   }
 
   if (text === '/發布菜單') {
