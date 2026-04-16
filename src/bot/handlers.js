@@ -79,6 +79,16 @@ async function handleTextMessage(event, client) {
     return commands.cancelOrder(event, client);
   }
 
+  if (text === '/發布菜單') {
+    if (!isOrganizer(userId)) {
+      return client.replyMessage({
+        replyToken,
+        messages: [{ type: 'text', text: '只有主辦人可以發布菜單。' }],
+      });
+    }
+    return commands.publishMenu(event, client);
+  }
+
   // /取消餐點 — cancel own items (anyone); /取消餐點 <name> — organizer only
   if (text === '/取消餐點') {
     return commands.cancelMyItems(event, client);

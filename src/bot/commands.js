@@ -450,6 +450,7 @@ function helpMessage(userId) {
     return '📋 可用指令\n\n' +
       '【訂餐管理】\n' +
       '/新增訂單 <店名> → 開始新一輪訂餐（主辦人）\n' +
+      '/發布菜單 → 將菜單推送至群組（主辦人）\n' +
       '/統計 → 查看目前選餐（主辦人）\n' +
       '/確認下單 → 結單並發送付款通知（主辦人）\n' +
       '/關閉訂單 → 取消整筆訂單（主辦人）\n\n' +
@@ -494,6 +495,26 @@ async function cancelOrder(event, client) {
   );
 }
 
+// ─── Publish Menu to Group ────────────────────────────────────────────────────
+
+async function publishMenu(event, client) {
+  const replyToken = event.replyToken;
+  const groupId = event.source.groupId;
+
+  if (!groupId) {
+    return replyText(client, replyToken, '此指令只能在群組中使用。');
+  }
+
+  const order = db.getActiveOrder();
+  if (!order || order.status !== 'open') {
+    return replyText(client, replyToken, '目前沒有開放中的訂單可以發布。');
+  }
+
+  const menuItems = db.getMenuItems(order.id);
+  await pushMessage(client, groupId, buildMenuFlexMessage(order, menuItems));
+  return replyText(client, replyToken, '✅ 菜單已發布至群組。');
+}
+
 module.exports = {
   createOrderSession,
   handleWizardInput,
@@ -505,5 +526,6 @@ module.exports = {
   cancelMyItems,
   cancelNamedItems,
   cancelOrder,
+  publishMenu,
   helpMessage,
 };

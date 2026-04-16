@@ -131,7 +131,10 @@ The reply SHALL NOT include any hint block.
 **Payment method selection reply (`set_payment` postback):**
 The reply SHALL NOT include any hint block.
 
-All other command replies (e.g., `/取消餐點`, `/關閉訂單`, wizard prompts) SHALL continue to follow the existing role-aware hint behavior.
+**Cancel meal reply (`/取消餐點`):**
+The reply SHALL NOT include any hint block, for both the self-cancel and organizer-cancel-named-user variants.
+
+All other command replies (e.g., `/關閉訂單`, wizard prompts) SHALL continue to follow the existing role-aware hint behavior.
 
 #### Scenario: Any user receives single-line hint after selecting item
 
@@ -157,18 +160,30 @@ All other command replies (e.g., `/取消餐點`, `/關閉訂單`, wizard prompt
 - **THEN** the reply SHALL confirm the recorded payment method
 - **THEN** the reply SHALL NOT contain any `📌 可用指令` section
 
+#### Scenario: Self-cancel reply has no hint block
+
+- **WHEN** any user sends `/取消餐點` and has existing items in an open order
+- **THEN** the reply SHALL confirm cancellation (e.g., "✅ 已取消你的餐點選擇，可重新點選。")
+- **THEN** the reply SHALL NOT contain any `📌 可用指令` section
+
+#### Scenario: Organizer cancel named user reply has no hint block
+
+- **WHEN** the organizer sends `/取消餐點 <name>` and the named user has existing items
+- **THEN** the reply SHALL confirm cancellation (e.g., "✅ 已取消「<name>」的餐點選擇。")
+- **THEN** the reply SHALL NOT contain any `📌 可用指令` section
+
 
 <!-- @trace
-source: simplify-reply-hints
+source: remove-cancel-meal-hint
 updated: 2026-04-16
 code:
-  - .obsidian/workspace.json
+  - src/db/schema.js
   - src/bot/handlers.js
+  - .obsidian/workspace.json
+  - src/db/queries.js
+  - .DS_Store
   - src/bot/commands.js
   - src/bot/messages.js
-  - src/db/queries.js
-  - src/db/schema.js
-  - .DS_Store
 -->
 
 ---
