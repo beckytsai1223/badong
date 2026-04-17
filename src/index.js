@@ -17,6 +17,9 @@ const client = new line.messagingApi.MessagingApiClient({
 
 const app = express();
 
+// Health check — for uptime monitoring (prevents free-tier sleep)
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 // LINE webhook — uses raw body for signature verification
 app.post('/webhook', line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(event => handleEvent(event, client)))
