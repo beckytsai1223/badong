@@ -19,11 +19,25 @@ function buildMenuFlexMessage(order, menuItems) {
         contents: [
           {
             type: 'text',
-            text: `🍱 ${order.restaurant_name}`,
+            text: order.meal_label ? `🍱 ${order.restaurant_name}｜${order.meal_label}` : `🍱 ${order.restaurant_name}`,
             weight: 'bold',
             size: 'xl',
             color: '#ffffff',
           },
+          {
+            type: 'text',
+            text: '請直接在下方點選點餐',
+            size: 'sm',
+            color: '#cce4f7',
+            wrap: true,
+          },
+          ...(order.order_deadline ? [{
+            type: 'text',
+            text: `⏰ 截止：${order.order_deadline}`,
+            size: 'sm',
+            color: '#cce4f7',
+            wrap: true,
+          }] : []),
         ],
         backgroundColor: '#2B7BB9',
         paddingAll: '16px',

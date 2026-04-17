@@ -68,6 +68,20 @@ function initSchema() {
   } catch (_) {
     // Column already exists — idempotent
   }
+
+  // Migration: add meal_label column if not yet present
+  try {
+    db.exec(`ALTER TABLE orders ADD COLUMN meal_label TEXT DEFAULT NULL`);
+  } catch (_) {
+    // Column already exists — idempotent
+  }
+
+  // Migration: add order_deadline column if not yet present
+  try {
+    db.exec(`ALTER TABLE orders ADD COLUMN order_deadline TEXT DEFAULT NULL`);
+  } catch (_) {
+    // Column already exists — idempotent
+  }
 }
 
 module.exports = { getDb };

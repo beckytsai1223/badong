@@ -57,7 +57,7 @@ async function handleTextMessage(event, client) {
 
   // Check for active wizard session first (organizer only)
   const session = getSession(userId);
-  if (session && (session.state === 'adding_items' || session.state === 'setting_threshold' || session.state === 'confirming_menu')) {
+  if (session && (session.state === 'setting_meal_label' || session.state === 'setting_deadline' || session.state === 'setting_threshold' || session.state === 'adding_items' || session.state === 'confirming_menu')) {
     return commands.handleWizardInput(event, client, text, session);
   }
 

@@ -4,11 +4,11 @@ const { getDb } = require('./schema');
 
 // ─── Order ────────────────────────────────────────────────────────────────────
 
-function createOrder(restaurantName, createdBy) {
+function createOrder(restaurantName, createdBy, mealLabel = null) {
   const db = getDb();
   const result = db.prepare(
-    `INSERT INTO orders (restaurant_name, status, created_by) VALUES (?, 'open', ?)`
-  ).run(restaurantName, createdBy);
+    `INSERT INTO orders (restaurant_name, status, created_by, meal_label) VALUES (?, 'open', ?, ?)`
+  ).run(restaurantName, createdBy, mealLabel);
   return result.lastInsertRowid;
 }
 
@@ -27,6 +27,16 @@ function updateOrderStatus(orderId, status) {
 function setDeliveryThreshold(orderId, value) {
   const db = getDb();
   db.prepare(`UPDATE orders SET delivery_threshold = ? WHERE id = ?`).run(value, orderId);
+}
+
+function updateOrderMealLabel(orderId, mealLabel) {
+  const db = getDb();
+  db.prepare(`UPDATE orders SET meal_label = ? WHERE id = ?`).run(mealLabel, orderId);
+}
+
+function updateOrderDeadline(orderId, deadline) {
+  const db = getDb();
+  db.prepare(`UPDATE orders SET order_deadline = ? WHERE id = ?`).run(deadline, orderId);
 }
 
 // ─── MenuItem ─────────────────────────────────────────────────────────────────
@@ -140,6 +150,7 @@ function clearSession(userId) {
 
 module.exports = {
   createOrder, getActiveOrder, updateOrderStatus, setDeliveryThreshold,
+  updateOrderMealLabel, updateOrderDeadline,
   addMenuItem, getMenuItems,
   addOrderItem, getOrderItems, removeUserOrderItems, removeNamedUserOrderItems,
   upsertPayment, getPayments, markPaid, markPaidByUserId,

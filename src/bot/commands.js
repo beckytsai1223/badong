@@ -95,10 +95,10 @@ async function createOrderSession(event, client, restaurant) {
   }
 
   const orderId = db.createOrder(restaurant, userId);
-  db.setSession(userId, 'setting_threshold', { orderId, restaurantName: restaurant });
+  db.setSession(userId, 'setting_meal_label', { orderId, restaurantName: restaurant });
 
   return replyText(client, replyToken,
-    `✅ 已建立「${restaurant}」訂單！\n\n請輸入外送標準金額（例如：500）\n若無外送標準，請輸入 /略過`
+    `✅ 已建立「${restaurant}」訂單！\n\n請輸入這份訂單的餐點說明（例如：明天午餐、4/18 便當）\n若不需要，請輸入 /略過`
   );
 }
 
@@ -108,6 +108,28 @@ async function handleWizardInput(event, client, text, session) {
   const replyToken = event.replyToken;
   const userId = event.source.userId;
   const { orderId, restaurantName } = session.data;
+
+  // setting_meal_label state: collect optional meal label
+  if (session.state === 'setting_meal_label') {
+    if (text !== '/略過') {
+      db.updateOrderMealLabel(orderId, text);
+    }
+    db.setSession(userId, 'setting_deadline', { orderId, restaurantName });
+    return replyText(client, replyToken,
+      `請輸入點餐截止時間（例如：4月18號中午12點）\n若無截止時間，請輸入 /略過`
+    );
+  }
+
+  // setting_deadline state: collect optional order deadline
+  if (session.state === 'setting_deadline') {
+    if (text !== '/略過') {
+      db.updateOrderDeadline(orderId, text);
+    }
+    db.setSession(userId, 'setting_threshold', { orderId, restaurantName });
+    return replyText(client, replyToken,
+      `請輸入外送標準金額（例如：500）\n若無外送標準，請輸入 /略過`
+    );
+  }
 
   // setting_threshold state: collect optional delivery threshold before menu entry
   if (session.state === 'setting_threshold') {
