@@ -123,9 +123,9 @@ function buildPaymentNotificationMessage(order, orderItems) {
   }));
 
   const methods = [
-    { method: 'cash', label: '現金' },
-    { method: 'transfer', label: '轉帳' },
-    { method: 'linepay', label: 'LINE Pay' },
+    { method: 'cash', label: '已完成現金付款' },
+    { method: 'transfer', label: '已完成轉帳付款' },
+    { method: 'linepay', label: '已完成 LINE Pay 付款' },
   ];
 
   const paymentButtons = methods.map(({ method, label }) => ({
