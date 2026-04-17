@@ -513,7 +513,7 @@ async function cancelOrder(event, client) {
   db.clearSession(userId);
 
   return replyText(client, replyToken,
-    `❌ 訂單「${order.restaurant_name}」已取消。` + hint('none', userId)
+    `🔒 訂單「${order.restaurant_name}」已關閉。`
   );
 }
 
