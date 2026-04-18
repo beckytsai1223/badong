@@ -253,13 +253,13 @@ async function selectItem(event, client, orderId, itemId) {
   const myTotal = myItems.reduce((sum, oi) => sum + oi.price, 0);
   const myList = myItems.map(oi => oi.item_name).join('、');
 
-  await replyText(client, replyToken,
-    `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}\n\n/取消餐點 → 取消自己的選餐重選`
-  );
-
-  // Re-push menu so it stays accessible at the bottom of the chat
-  const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
-  return pushMessage(client, sourceId, buildMenuFlexMessage(order, menuItems));
+  return client.replyMessage({
+    replyToken,
+    messages: [
+      { type: 'text', text: `✅ 已加入：${item.name} $${item.price}\n${displayName} 目前：${myList}，共 $${myTotal}\n\n/取消餐點 → 取消自己的選餐重選` },
+      buildMenuFlexMessage(order, menuItems),
+    ],
+  });
 }
 
 // ─── View Order Tally ─────────────────────────────────────────────────────────
@@ -330,14 +330,14 @@ async function confirmOrder(event, client) {
   db.markPaidByUserId(order.id, userId);
 
   const uniqueUsers = new Set(items.map(i => i.user_id)).size;
-  await replyText(client, replyToken,
-    `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...\n\n請大家撥空付款，可現金、轉帳或 LINE Pay`
-  );
-
-  // Send Payment Notifications to the group
-  const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
   const paymentMsg = buildPaymentNotificationMessage(order, items);
-  return pushMessage(client, sourceId, paymentMsg);
+  return client.replyMessage({
+    replyToken,
+    messages: [
+      { type: 'text', text: `✅ 訂單已確認！共 ${uniqueUsers} 人 ${items.length} 份，正在發送收款通知...\n\n請大家撥空付款，可現金、轉帳或 LINE Pay` },
+      paymentMsg,
+    ],
+  });
 }
 
 // ─── Set Payment Method ───────────────────────────────────────────────────────
@@ -435,12 +435,14 @@ async function cancelMyItems(event, client) {
   if (!removed) {
     return replyText(client, replyToken, '你目前沒有選餐，無需取消。');
   }
-  await replyText(client, replyToken, '✅ 已取消你的餐點選擇，可重新點選。');
-
-  // Re-push menu so the member can immediately re-select
-  const sourceId = event.source.groupId || event.source.roomId || event.source.userId;
   const menuItems = db.getMenuItems(order.id);
-  return pushMessage(client, sourceId, buildMenuFlexMessage(order, menuItems));
+  return client.replyMessage({
+    replyToken,
+    messages: [
+      { type: 'text', text: '✅ 已取消你的餐點選擇，可重新點選。' },
+      buildMenuFlexMessage(order, menuItems),
+    ],
+  });
 }
 
 // ─── Cancel Named User Items（主辦人用）────────────────────────────────────────
@@ -533,8 +535,10 @@ async function publishMenu(event, client) {
   }
 
   const menuItems = db.getMenuItems(order.id);
-  await pushMessage(client, groupId, buildMenuFlexMessage(order, menuItems));
-  return replyText(client, replyToken, '✅ 菜單已發布至群組。');
+  return client.replyMessage({
+    replyToken,
+    messages: [buildMenuFlexMessage(order, menuItems), { type: 'text', text: '✅ 菜單已發布至群組。' }],
+  });
 }
 
 module.exports = {

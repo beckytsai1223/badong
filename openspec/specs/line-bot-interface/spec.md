@@ -33,6 +33,7 @@ The system SHALL recognize the following text commands sent by any user in the g
 | `/收款狀態` | View payment status |
 | `/關閉訂單` | Cancel/close the active order |
 | `/取消餐點` | Cancel own items (or named user's items if organizer) |
+| `/發布菜單` | Publish menu to the group (organizer only) |
 
 Unrecognized messages during an active wizard session (menu item entry) SHALL be forwarded to the wizard handler. All other unrecognized messages SHALL be silently ignored.
 
@@ -68,31 +69,77 @@ Unrecognized messages during an active wizard session (menu item entry) SHALL be
 
 
 <!-- @trace
-source: close-order-ux
-updated: 2026-04-15
+source: publish-menu-to-group
+updated: 2026-04-17
 code:
-  - src/db/queries.js
   - src/bot/messages.js
-  - src/bot/commands.js
-  - .obsidian/workspace.json
+  - src/db/schema.js
   - src/bot/handlers.js
+  - .obsidian/workspace.json
+  - src/db/queries.js
+  - src/bot/commands.js
   - .DS_Store
 -->
 
 ---
 ### Requirement: Flex Message Menu Rendering
 
-The system SHALL render the active order's menu as a LINE Flex Message containing the restaurant name as the header and one Quick Reply button per menu item. Each Quick Reply button SHALL display the item name and price, and SHALL carry a postback payload in the format `action=select_item&order_id=<id>&item_id=<id>`.
+The system SHALL render the active order's menu as a LINE Flex Message with the following header structure:
+
+- **Title line**: `🍱 <restaurant_name>` if `meal_label` is NULL or empty; `🍱 <restaurant_name>｜<meal_label>` if `meal_label` is set
+- **Subtitle line**: Fixed text `請直接在下方點選點餐` (small font, light color), always present regardless of `meal_label`
+- **Deadline line**: `⏰ 截止：<order_deadline>` (small font, light color), present only when `order_deadline` is non-NULL
+
+The body SHALL contain one row per menu item, each with the item name, price, and a postback button labeled `點選`. Each button SHALL carry a postback payload in the format `action=select_item&order_id=<id>&item_id=<id>`.
 
 #### Scenario: Flex Message is sent after menu entry completes
 
 - **WHEN** the organizer ends the menu-entry dialog
-- **THEN** the system SHALL send a Flex Message to the group with the restaurant name and one Quick Reply button per menu item (showing name and price)
+- **THEN** the system SHALL send a Flex Message to the group with the restaurant name (and meal label if set) in the header title, the fixed subtitle "請直接在下方點選點餐", and one row per menu item showing name, price, and a 點選 button
+
+#### Scenario: Flex Message header shows meal label when set
+
+- **WHEN** the active order has a non-NULL `meal_label` (e.g., "明天午餐")
+- **THEN** the Flex Message header title SHALL be `🍱 <restaurant_name>｜<meal_label>` (e.g., "🍱 便當店｜明天午餐")
+
+#### Scenario: Flex Message header shows only restaurant name when meal label is absent
+
+- **WHEN** the active order has a NULL `meal_label`
+- **THEN** the Flex Message header title SHALL be `🍱 <restaurant_name>` with no separator or label
+
+#### Scenario: Flex Message always shows fixed subtitle
+
+- **WHEN** a menu Flex Message is rendered (regardless of meal_label)
+- **THEN** the header SHALL include a subtitle line with the text "請直接在下方點選點餐"
+
+#### Scenario: Flex Message shows deadline line when set
+
+- **WHEN** the active order has a non-NULL `order_deadline` (e.g., "4月18號中午12點")
+- **THEN** the Flex Message header SHALL include a third line with the text `⏰ 截止：4月18號中午12點`
+
+#### Scenario: Flex Message omits deadline line when not set
+
+- **WHEN** the active order has a NULL `order_deadline`
+- **THEN** the Flex Message header SHALL NOT include a deadline line
 
 #### Scenario: Flex Message Quick Reply carries correct postback
 
-- **WHEN** a Quick Reply button in the menu Flex Message is tapped
+- **WHEN** a 點選 button in the menu Flex Message is tapped
 - **THEN** the postback data SHALL be in the format `action=select_item&order_id=<id>&item_id=<id>` with the correct IDs
+
+
+<!-- @trace
+source: order-meal-label-and-menu-hint
+updated: 2026-04-17
+code:
+  - .obsidian/workspace.json
+  - src/bot/handlers.js
+  - .DS_Store
+  - src/bot/messages.js
+  - src/bot/commands.js
+  - src/db/queries.js
+  - src/db/schema.js
+-->
 
 ---
 ### Requirement: Postback Event Handling
@@ -189,26 +236,23 @@ code:
 ---
 ### Requirement: Payment Notification Text
 
-The payment notification message pushed to the group after order confirmation SHALL list each participant's ordered items and subtotal, and the grand total. The message SHALL be a Flex Message containing three inline payment method buttons: 現金, 轉帳, LINE Pay. Each button SHALL trigger a postback with format `action=set_payment&order_id=<id>&method=<method>`. The message SHALL NOT include Quick Reply buttons. The message SHALL NOT include the text "請選擇付款方式".
+The payment notification message pushed to the group after order confirmation SHALL list each participant's ordered items and subtotal, and the grand total. The message SHALL be a Flex Message containing three inline payment method buttons: 已完成現金付款, 已完成轉帳付款, 已完成 LINE Pay 付款. Each button SHALL trigger a postback with format `action=set_payment&order_id=<id>&method=<method>`. The message SHALL NOT include Quick Reply buttons. The message SHALL NOT include the text "請選擇付款方式".
 
 #### Scenario: Payment notification is Flex Message with inline buttons
 
 - **WHEN** the organizer confirms an order and the system pushes the payment notification to the group
 - **THEN** the notification SHALL be a Flex Message showing each user's items, subtotal per user, and grand total
-- **THEN** the notification SHALL contain three buttons: 現金, 轉帳, LINE Pay
+- **THEN** the notification SHALL contain three buttons labeled 已完成現金付款, 已完成轉帳付款, 已完成 LINE Pay 付款
 - **THEN** the notification text SHALL NOT contain "請選擇付款方式"
 - **THEN** the notification SHALL NOT carry Quick Reply buttons
 
 
 <!-- @trace
-source: close-order-ux
-updated: 2026-04-15
+source: payment-button-label-update
+updated: 2026-04-17
 code:
-  - src/db/queries.js
   - src/bot/messages.js
-  - src/bot/commands.js
   - .obsidian/workspace.json
-  - src/bot/handlers.js
   - .DS_Store
 -->
 
@@ -338,4 +382,65 @@ code:
   - .obsidian/workspace.json
   - src/bot/handlers.js
   - .DS_Store
+-->
+
+---
+### Requirement: Publish Menu to Group
+
+The system SHALL provide a `/發布菜單` command that pushes the current open order's menu Flex Message to the group where the command was sent.
+
+The command SHALL be restricted to organizers only. If a non-organizer sends `/發布菜單`, the system SHALL reply with an error message and SHALL NOT push the menu.
+
+If there is no active order in `open` status, the system SHALL reply with an error message indicating no open order exists.
+
+#### Scenario: Organizer publishes menu to group
+
+- **WHEN** an organizer sends `/發布菜單` in a group where an `open` order exists
+- **THEN** the system SHALL push the menu Flex Message to that group using the group's `groupId`
+- **THEN** the system SHALL reply to the organizer confirming the menu has been published
+
+#### Scenario: Non-organizer attempts to publish menu
+
+- **WHEN** a non-organizer sends `/發布菜單`
+- **THEN** the system SHALL reply with an error message (e.g., "只有主辦人可以發布菜單。")
+- **THEN** the system SHALL NOT push the menu to the group
+
+#### Scenario: No open order when publishing
+
+- **WHEN** an organizer sends `/發布菜單` but no order with `open` status exists
+- **THEN** the system SHALL reply with an error message (e.g., "目前沒有開放中的訂單可以發布。")
+- **THEN** the system SHALL NOT push any message to the group
+
+<!-- @trace
+source: publish-menu-to-group
+updated: 2026-04-17
+code:
+  - src/bot/messages.js
+  - src/db/schema.js
+  - src/bot/handlers.js
+  - .obsidian/workspace.json
+  - src/db/queries.js
+  - src/bot/commands.js
+  - .DS_Store
+-->
+
+---
+### Requirement: Cancel Order Reply
+
+When the organizer closes an active order via `/關閉訂單`, the system SHALL reply with `🔒 訂單「<restaurant_name>」已關閉。`. The reply SHALL NOT include any "可用指令" hint block.
+
+#### Scenario: Organizer closes an order
+
+- **WHEN** the organizer sends `/關閉訂單` and an active order exists
+- **THEN** the system SHALL reply with `🔒 訂單「<restaurant_name>」已關閉。`
+- **THEN** the reply SHALL NOT contain any "可用指令" text or hint block
+
+<!-- @trace
+source: close-order-message-update
+updated: 2026-04-17
+code:
+  - src/bot/commands.js
+  - .obsidian/workspace.json
+  - .DS_Store
+  - src/index.js
 -->
