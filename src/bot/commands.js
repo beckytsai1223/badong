@@ -292,6 +292,13 @@ async function viewTally(event, client) {
   );
   lines.push(`\n合計：${items.length} 份，共 $${grandTotal}`);
 
+  const itemCounts = {};
+  for (const oi of items) {
+    itemCounts[oi.item_name] = (itemCounts[oi.item_name] || 0) + 1;
+  }
+  const itemSummaryLines = Object.entries(itemCounts).map(([name, count]) => `${name}：${count} 份`);
+  lines.push('\n【品項統計】\n' + itemSummaryLines.join('\n'));
+
   if (order.delivery_threshold != null) {
     if (grandTotal >= order.delivery_threshold) {
       lines.push(`✅ 已達外送標準（$${order.delivery_threshold}）`);
@@ -357,15 +364,10 @@ async function setPaymentMethod(event, client, orderId, method) {
     return replyText(client, replyToken, '您已選擇付款方式，選擇後無法更改。');
   }
 
-  const methodLabels = { cash: '現金', transfer: '轉帳', linepay: 'LINE Pay' };
-  const label = methodLabels[method] || method;
-
   const displayName = await getDisplayName(client, event);
 
   db.upsertPayment(orderId, userId, displayName, method);
   db.markPaidByUserId(orderId, userId);
-
-  return replyText(client, replyToken, `✅ 已記錄付款方式：${label}`);
 }
 
 // ─── View Payment Status ──────────────────────────────────────────────────────
@@ -431,6 +433,7 @@ async function cancelMyItems(event, client) {
     return replyText(client, replyToken, '目前沒有開放選餐的訂單。');
   }
 
+  const displayName = await getDisplayName(client, event);
   const removed = db.removeUserOrderItems(order.id, userId);
   if (!removed) {
     return replyText(client, replyToken, '你目前沒有選餐，無需取消。');
@@ -439,7 +442,7 @@ async function cancelMyItems(event, client) {
   return client.replyMessage({
     replyToken,
     messages: [
-      { type: 'text', text: '✅ 已取消你的餐點選擇，可重新點選。' },
+      { type: 'text', text: `✅ 已取消 ${displayName} 的餐點選擇，可重新點選。` },
       buildMenuFlexMessage(order, menuItems),
     ],
   });
